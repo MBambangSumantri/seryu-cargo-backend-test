@@ -72,7 +72,8 @@ GET http://localhost:8000/v1/salary/driver/list?month=3&year=2024&current=1&page
 
 ### Example Response
 
-```{
+```
+{
 	"data": [
 		{
 			"driver_code": "DRIVER001",
