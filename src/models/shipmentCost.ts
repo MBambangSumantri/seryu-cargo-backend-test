@@ -6,7 +6,7 @@ class ShipmentCost extends Model {
   public id!: number;
   public driver_code!: string;
   public shipment_no!: string;
-  public total_cost!: number;
+  public total_costs!: number;
   public cost_status!: string;
 
   public readonly Shipment?: Shipment;
@@ -24,8 +24,12 @@ ShipmentCost.init(
     },
     shipment_no: {
       type: DataTypes.STRING,
+      references: {
+        model: Shipment,
+        key: "shipment_no",
+      },
     },
-    total_cost: {
+    total_costs: {
       type: DataTypes.FLOAT,
     },
     cost_status: {

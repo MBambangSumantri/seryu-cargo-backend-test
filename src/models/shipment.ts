@@ -14,6 +14,7 @@ Shipment.init(
   {
     shipment_no: {
       type: DataTypes.STRING,
+      primaryKey: true,
     },
     shipment_date: {
       type: DataTypes.STRING,

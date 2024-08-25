@@ -49,9 +49,9 @@ export const getDriverSalaries = async (req: Request, res: Response) => {
       };
     }
 
-    // Ambil semua driver dengan gaji > 0 berdasarkan status dan filter
-    const allDrivers = await Driver.findAll({
-      attributes: ["driver_code", "name"],
+    // Calculate total_row by counting matching drivers without pagination
+    const total_row = await Driver.findAll({
+      attributes: ["id"],
       where: whereConditions,
       include: [
         {
@@ -87,11 +87,55 @@ export const getDriverSalaries = async (req: Request, res: Response) => {
       having: getStatusHavingClause(status, salary),
     });
 
-    const total_row = allDrivers.length;
+    // Get the driver IDs first for pagination
+    const driverIds = await Driver.findAll({
+      attributes: ["id"],
+      where: whereConditions,
+      include: [
+        {
+          model: DriverAttendance,
+          attributes: [],
+          where: sequelize.where(
+            sequelize.fn(
+              "EXTRACT",
+              sequelize.literal("MONTH FROM CAST(attendance_date AS DATE)")
+            ),
+            month
+          ),
+          required: false,
+        },
+        {
+          model: ShipmentCost,
+          attributes: [],
+          include: [
+            {
+              model: Shipment,
+              attributes: [],
+              where: {
+                shipment_status: {
+                  [Op.not]: "CANCELLED",
+                },
+              },
+            },
+          ],
+          required: false,
+        },
+      ],
+      group: ["Driver.id", "Driver.driver_code"],
+      having: getStatusHavingClause(status, salary),
+      limit,
+      offset,
+      subQuery: false,
+    });
 
+    // Retrieve the full driver data for the paginated drivers
     const driverSalaries = await Driver.findAll({
       attributes: ["driver_code", "name"],
-      where: whereConditions,
+      where: {
+        id: {
+          [Op.in]: driverIds.map(d => d.id),
+        },
+      },
       include: [
         {
           model: DriverAttendance,
@@ -128,11 +172,9 @@ export const getDriverSalaries = async (req: Request, res: Response) => {
                   [Op.not]: "CANCELLED",
                 },
               },
-              as: "Shipment",
             },
           ],
           required: false,
-          as: "ShipmentCosts",
         },
       ],
       group: [
@@ -142,31 +184,32 @@ export const getDriverSalaries = async (req: Request, res: Response) => {
         "DriverAttendances.id",
         "ShipmentCosts.id",
         "ShipmentCosts->Shipment.shipment_no",
+        "ShipmentCosts->Shipment.shipment_date",
+        "ShipmentCosts->Shipment.shipment_status",
       ],
       having: getStatusHavingClause(status, salary),
-      // limit and offset can be added as needed
     });
 
     const data = driverSalaries.map(driver => {
       const totalPending =
         driver.ShipmentCosts?.reduce(
           (acc, sc) =>
-            sc.cost_status === "PENDING" ? acc + sc.total_cost : acc,
+            sc.cost_status === "PENDING" ? acc + sc.total_costs : acc,
           0
-        ) ?? 0;
+        ) || 0;
 
       const totalConfirmed =
         driver.ShipmentCosts?.reduce(
           (acc, sc) =>
-            sc.cost_status === "CONFIRMED" ? acc + sc.total_cost : acc,
+            sc.cost_status === "CONFIRMED" ? acc + sc.total_costs : acc,
           0
-        ) ?? 0;
+        ) || 0;
 
       const totalPaid =
         driver.ShipmentCosts?.reduce(
-          (acc, sc) => (sc.cost_status === "PAID" ? acc + sc.total_cost : acc),
+          (acc, sc) => (sc.cost_status === "PAID" ? acc + sc.total_costs : acc),
           0
-        ) ?? 0;
+        ) || 0;
 
       const totalAttendanceSalary =
         (driver.DriverAttendances?.length || 0) * salary;
@@ -192,7 +235,7 @@ export const getDriverSalaries = async (req: Request, res: Response) => {
 
     res.json({
       data,
-      total_row,
+      total_row: total_row.length,
       current: parseInt(current as string, 10),
       page_size: limit,
     });
